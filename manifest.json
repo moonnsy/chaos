@@ -1,0 +1,8 @@
+{
+  "display_name": "Сюжетный пинок",
+  "version": "1.0.0",
+  "loading_order": 80,
+  "js": "index.js",
+  "css": "style.css",
+  "generate_interceptor": "plotNudgeIntercept"
+}

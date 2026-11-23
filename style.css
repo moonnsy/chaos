@@ -1,0 +1,175 @@
+#plot-nudge {
+    --pn-surface: var(--SmartThemeBlurTintColor);
+    --pn-input: color-mix(in srgb, var(--pn-surface), var(--pn-text) 4%);
+    --pn-hover: color-mix(in srgb, var(--pn-surface), var(--pn-text) 12%);
+    --pn-border: color-mix(in srgb, var(--SmartThemeBorderColor), var(--pn-text) 22%);
+    --pn-text: var(--SmartThemeBodyColor);
+    --pn-muted: color-mix(in srgb, var(--pn-text), var(--SmartThemeEmColor) 45%);
+    --pn-accent: var(--SmartThemeQuoteColor);
+    box-sizing: border-box;
+    width: min(476px, calc(100% - 24px));
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+    padding: clamp(16px, 4vw, 24px);
+    margin: auto;
+    border: 1px solid var(--pn-border);
+    border-radius: 12px;
+    color: var(--pn-text);
+    background: var(--pn-surface);
+    backdrop-filter: blur(var(--SmartThemeBlurStrength, 12px));
+    font: 400 14px/1.45 system-ui, sans-serif;
+    box-shadow: 0 18px 48px #0007;
+}
+
+#plot-nudge::backdrop { background: #0008; }
+#plot-nudge [hidden] { display: none !important; }
+#plot-nudge :is(header, .pn-toggle, .pn-auto, .pn-actions, footer) {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+#plot-nudge header, #plot-nudge .pn-toggle { justify-content: space-between; }
+#plot-nudge h2 {
+    margin: 0;
+    color: inherit;
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -.025em;
+}
+
+#plot-nudge button {
+    min-height: 38px;
+    padding: 7px 12px;
+    border: 1px solid var(--pn-border);
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+#plot-nudge button:hover:not(:disabled) { background: var(--pn-hover); }
+#plot-nudge [data-close] {
+    display: grid;
+    width: 34px;
+    min-height: 34px;
+    place-items: center;
+    padding: 0;
+    border-color: transparent;
+    color: var(--pn-muted);
+    font-size: 23px;
+    line-height: 1;
+}
+#plot-nudge .pn-toggle {
+    margin: 8px 0;
+    color: var(--pn-muted);
+}
+#plot-nudge .pn-toggle:last-of-type {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--pn-border);
+}
+
+#plot-nudge fieldset { display: grid; gap: 13px; border: 0; padding: 0; margin: 0; min-width: 0; }
+#plot-nudge fieldset:disabled { opacity: .56; }
+#plot-nudge legend { margin-bottom: 7px; padding: 0; font-weight: 600; }
+#plot-nudge .pn-modes {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--pn-border);
+    border-radius: 8px;
+    background: var(--pn-input);
+}
+#plot-nudge .pn-mode {
+    position: relative;
+    display: grid;
+    min-height: 35px;
+    place-items: center;
+    padding: 3px 5px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: var(--pn-muted);
+    text-align: center;
+    cursor: pointer;
+}
+#plot-nudge .pn-mode:hover { color: var(--pn-text); }
+#plot-nudge .pn-mode:has(:checked) {
+    border-color: var(--pn-border);
+    background: var(--pn-hover);
+    color: var(--pn-accent);
+    font-weight: 600;
+}
+#plot-nudge .pn-mode input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+#plot-nudge :focus-visible, #plot-nudge .pn-mode:has(:focus-visible) {
+    outline: 2px solid var(--pn-accent);
+    outline-offset: 2px;
+}
+
+#plot-nudge .pn-field { display: grid; gap: 5px; color: var(--pn-muted); }
+#plot-nudge .pn-profile { margin-bottom: 16px; }
+#plot-nudge :is(input[type=text], input[type=number], textarea, select) {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 8px 10px;
+    margin: 0;
+    border: 1px solid var(--pn-border);
+    border-radius: 6px;
+    background: var(--pn-input);
+    color: var(--pn-text);
+    font: inherit;
+}
+#plot-nudge :is(input, textarea)::placeholder { color: var(--pn-muted); }
+#plot-nudge textarea { resize: vertical; }
+#plot-nudge input[type=number] { width: 54px; padding: 4px 6px; }
+#plot-nudge input[type=checkbox] { margin: 0; vertical-align: middle; accent-color: var(--pn-accent); }
+#plot-nudge .pn-auto { flex-wrap: wrap; gap: 7px 14px; color: var(--pn-muted); }
+#plot-nudge .pn-auto label { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+#plot-nudge .pn-auto input:disabled { opacity: .5; }
+#plot-nudge .pn-actions { justify-content: flex-end; flex-wrap: wrap; padding-top: 3px; }
+#plot-nudge [data-now] {
+    border-color: var(--pn-accent);
+    background: color-mix(in srgb, var(--pn-input), var(--pn-accent) 18%);
+    color: var(--pn-text);
+    font-weight: 650;
+}
+#plot-nudge [data-now]:hover:not(:disabled) { background: color-mix(in srgb, var(--pn-input), var(--pn-accent) 30%); }
+#plot-nudge button:disabled { opacity: .55; cursor: default; }
+#plot-nudge footer { justify-content: space-between; color: var(--pn-muted); font-size: 12px; }
+#plot-nudge footer:has([data-status]:not(:empty), [data-cancel]:not([hidden])) { margin-top: 10px; }
+#plot-nudge [data-cancel] { min-height: 30px; padding: 4px 8px; }
+
+#plot-nudge-composer:not([hidden]) {
+    order: 24;
+    flex: 0 0 100%;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 3px 6px;
+    color: var(--SmartThemeBodyColor);
+}
+#plot-nudge-composer button {
+    display: grid;
+    place-items: center;
+    min-width: 32px;
+    min-height: 30px;
+    padding: 3px 6px;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+}
+#plot-nudge-composer button:hover:not(:disabled) {
+    border-color: var(--SmartThemeBorderColor);
+    background: color-mix(in srgb, currentColor 10%, transparent);
+}
+#plot-nudge-composer button:focus-visible { outline: 2px solid var(--SmartThemeQuoteColor); }
+#plot-nudge-composer button:disabled { opacity: .5; cursor: wait; }
+#plot-nudge-composer [role="status"] { margin-inline-start: 4px; font-size: .8em; }
+#plot-nudge-composer [role="status"]:empty { display: none; }

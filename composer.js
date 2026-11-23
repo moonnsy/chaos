@@ -202,7 +202,7 @@ export function mountComposer(getContext, getSettings, wandButton) {
         const requestRevision = revision;
         request = new AbortController();
         write.disabled = true;
-        wandButton.disabled = true;
+        wandButton.setAttribute('aria-disabled', 'true');
         status.textContent = 'Пишу…';
         try {
             const quietPrompt = writerPrompt(context.name1, draft);
@@ -245,9 +245,14 @@ export function mountComposer(getContext, getSettings, wandButton) {
         } finally {
             request = undefined;
             write.disabled = false;
-            wandButton.disabled = false;
+            wandButton.removeAttribute('aria-disabled');
         }
     };
+    wandButton.addEventListener('keydown', event => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        event.preventDefault();
+        wandButton.click();
+    });
 
     return toolbar;
 }

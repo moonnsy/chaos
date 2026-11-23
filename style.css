@@ -111,7 +111,7 @@
 #plot-nudge .pn-tabs { display: flex; gap: 6px; margin: 12px 0; }
 #plot-nudge .pn-tabs [aria-pressed="true"] { background: var(--pn-hover); color: var(--pn-accent); }
 #plot-nudge-writer-entry[hidden] { display: none !important; }
-#plot-nudge-writer-entry > button { width: 100%; font: inherit; text-align: start; }
+#plot-nudge-writer-entry [aria-disabled="true"] { opacity: .5; cursor: wait; }
 #plot-nudge :is(input[type=text], input[type=number], textarea, select) {
     box-sizing: border-box;
     width: 100%;

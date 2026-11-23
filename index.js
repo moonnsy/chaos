@@ -192,9 +192,9 @@ function mount() {
     writerEntry = document.createElement('div');
     writerEntry.id = 'plot-nudge-writer-entry';
     writerEntry.className = 'extension_container';
-    writerEntry.innerHTML = '<button type="button" class="list-group-item flex-container flexGap5 interactable"><i class="fa-solid fa-feather-pointed fa-fw" aria-hidden="true"></i><span>Написать за меня</span></button>';
+    writerEntry.innerHTML = '<div class="list-group-item flex-container flexGap5 interactable" role="button" tabindex="0"><i class="fa-solid fa-feather-pointed fa-fw" aria-hidden="true"></i><span>Написать за меня</span></div>';
     menu.append(writerEntry);
-    composer = mountComposer(ctx, settings, writerEntry.querySelector('button'));
+    composer = mountComposer(ctx, settings, writerEntry.firstElementChild);
     writerEntry.hidden = !settings().writerInWand || !composer;
 
     dialog = document.createElement('dialog');

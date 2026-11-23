@@ -18,6 +18,52 @@ function wrapSentence(input) {
 }
 
 const writerTask = 'Редакторская задача для пера SillyTavern.';
+export const defaultWriterInstruction = 'Напиши один пост от лица персонажа игрока. Сохрани его намерение, язык и стиль чата. Только персонаж игрока говорит, думает и действует в новом посте. Используй историю для понимания сцены. Если черновика нет, предложи короткую уместную реакцию без важных решений за игрока.';
+
+async function customMessages(context, instruction, draft, characterId, budget) {
+    const card = context.getCharacterCardFields({ chid: characterId ?? undefined });
+    const history = context.chat.filter(message => !message.is_system);
+    const lore = await context.getWorldInfoPrompt(
+        history.map(message => `${message.name}: ${message.mes}`).reverse(), budget, true,
+        {
+            personaDescription: card.persona, characterDescription: card.description,
+            characterPersonality: card.personality, characterDepthPrompt: card.charDepthPrompt,
+            scenario: card.scenario, creatorNotes: card.creatorNotes, trigger: 'normal',
+        },
+    );
+    const interval = Number(context.chatMetadata.note_interval);
+    const turns = history.filter(message => message.is_user).length;
+    const note = interval === 1 || (interval > 1 && turns > 0 && turns % interval === 0)
+        ? context.chatMetadata.note_prompt : '';
+    const background = [
+        ['Персона игрока', card.persona], ['Описание персонажа', card.description],
+        ['Характер', card.personality], ['Сценарий', card.scenario],
+        ['Примеры диалога', card.mesExamples], ['Контекст персонажа', card.charDepthPrompt],
+        ['Авторская заметка', note],
+        ['Лор', [
+            lore.worldInfoBefore, lore.worldInfoAfter,
+            ...lore.worldInfoExamples.map(entry => entry.content),
+            ...lore.worldInfoDepth.flatMap(entry => entry.entries),
+            ...lore.anBefore, ...lore.anAfter,
+        ].filter(Boolean).join('\n')],
+    ].filter(([, value]) => value).map(([label, value]) => `${label}:\n${value}`).join('\n\n');
+    const system = { role: 'system', content: `${instruction}\n\n${background}`.trim() };
+    const task = { role: 'user', content: [
+        `Сейчас ход персонажа игрока: ${context.name1}.`,
+        draft.trim() ? `Черновик игрока: ${draft.trim()}` : 'Черновика нет.',
+        'Верни только текст поста внутри <post> и </post>.',
+    ].join('\n') };
+    let remaining = budget - await context.getTokenCountAsync(system.content + '\n' + task.content, 24);
+    if (remaining < 0) throw new Error('Инструкция и контекст не помещаются в лимит модели.');
+    const messages = [];
+    for (const message of history.slice().reverse()) {
+        const content = `${message.name}: ${message.mes}`;
+        remaining -= await context.getTokenCountAsync(content, 6);
+        if (remaining < 0) break;
+        messages.push({ role: message.is_user ? 'user' : 'assistant', content });
+    }
+    return [system, ...messages.reverse(), task];
+}
 
 function writerPrompt(name, draft) {
     return [
@@ -33,13 +79,14 @@ function writerPrompt(name, draft) {
     ].join('\n');
 }
 
-async function generateWithProfile(context, profileId, quietPrompt, signal) {
+async function generateWithProfile(context, profileId, quietPrompt, signal, buildMessages) {
     const service = context.ConnectionManagerRequestService;
     const profile = context.extensionSettings.connectionManager?.profiles?.find(item => item.id === profileId);
     if (!service || !profile || context.extensionSettings.disabledExtensions?.includes('connection-manager')) {
         throw new Error('Профиль пера недоступен.');
     }
     const api = service.validateProfile(profile).selected;
+    const preset = context.getPresetManager?.(api)?.getCompletionPresetByName(profile.preset);
     const { eventSource, event_types: events } = context;
     let payload;
     const capture = (data, dryRun) => {
@@ -48,21 +95,21 @@ async function generateWithProfile(context, profileId, quietPrompt, signal) {
             : Array.isArray(prompt) && prompt.some(message => JSON.stringify(message.content ?? '').includes(writerTask));
         if (dryRun && containsTask) payload = structuredClone(data);
     };
-    eventSource.on(events.GENERATE_AFTER_DATA, capture);
-    try {
-        await context.generate('quiet', { quiet_prompt: quietPrompt, force_name2: true }, true);
-    } finally {
-        eventSource.removeListener(events.GENERATE_AFTER_DATA, capture);
+    if (!buildMessages) {
+        eventSource.on(events.GENERATE_AFTER_DATA, capture);
+        try {
+            await context.generate('quiet', { quiet_prompt: quietPrompt, force_name2: true }, true);
+        } finally {
+            eventSource.removeListener(events.GENERATE_AFTER_DATA, capture);
+        }
+        if (!payload) throw new Error('SillyTavern не собрала промпт для пера.');
     }
-    signal.throwIfAborted();
-    if (!payload) throw new Error('SillyTavern не собрала промпт для пера.');
-
-    const preset = context.getPresetManager?.(api)?.getCompletionPresetByName(profile.preset);
-    const maxTokens = Number(preset?.openai_max_tokens ?? preset?.genamt ?? payload.max_tokens ?? payload.max_length
+    const maxTokens = Number(preset?.openai_max_tokens ?? preset?.genamt ?? payload?.max_tokens ?? payload?.max_length
         ?? context.chatCompletionSettings?.openai_max_tokens) || 512;
-    const prompt = api === 'openai' && typeof payload.prompt === 'string'
-        ? [{ role: 'user', content: payload.prompt }]
-        : payload.prompt;
+    const contextLimit = Number(preset?.openai_max_context ?? preset?.max_length) || context.maxContext;
+    let prompt = buildMessages ? await buildMessages(contextLimit - maxTokens) : payload.prompt;
+    if (api === 'openai' && typeof prompt === 'string') prompt = [{ role: 'user', content: prompt }];
+    signal.throwIfAborted();
     const overrides = {};
     if (profile.api === 'vertexai') {
         const current = context.chatCompletionSettings;
@@ -75,14 +122,16 @@ async function generateWithProfile(context, profileId, quietPrompt, signal) {
     return typeof result === 'string' ? result : result?.content;
 }
 
-export function mountComposer(getContext, isEnabled, getProfileId) {
+export function mountComposer(getContext, getSettings, wandButton) {
+    const isEnabled = () => Boolean(getSettings().quickButtons || getSettings().writerInWand);
+    const getProfileId = () => getSettings().writerProfile ?? '';
     const input = document.querySelector('#send_textarea');
     const row = input?.closest('#nonQRFormItems');
     if (!row) return;
 
     const toolbar = document.createElement('div');
     toolbar.id = 'plot-nudge-composer';
-    toolbar.hidden = !isEnabled();
+    toolbar.hidden = !getSettings().quickButtons;
     toolbar.setAttribute('role', 'group');
     toolbar.setAttribute('aria-label', 'Быстрые кнопки ввода');
     toolbar.innerHTML = `
@@ -93,7 +142,14 @@ export function mountComposer(getContext, isEnabled, getProfileId) {
     row.before(toolbar);
 
     const write = toolbar.querySelector('[data-action="write"]');
-    const status = toolbar.querySelector('[role="status"]');
+    const indicator = toolbar.querySelector('[role="status"]');
+    const status = {
+        get textContent() { return indicator.textContent; },
+        set textContent(text) {
+            indicator.textContent = text;
+            if (toolbar.hidden && text) globalThis.toastr?.info(text);
+        },
+    };
     let revision = 0;
     let request;
     const invalidate = () => { revision++; };
@@ -118,7 +174,8 @@ export function mountComposer(getContext, isEnabled, getProfileId) {
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.focus();
     };
-    write.onclick = async () => {
+    write.onclick = wandButton.onclick = async () => {
+        if (request) return;
         const context = getContext();
         const chatId = context.getCurrentChatId();
         const draft = input.value;
@@ -145,12 +202,26 @@ export function mountComposer(getContext, isEnabled, getProfileId) {
         const requestRevision = revision;
         request = new AbortController();
         write.disabled = true;
+        wandButton.disabled = true;
         status.textContent = 'Пишу…';
         try {
             const quietPrompt = writerPrompt(context.name1, draft);
-            const result = profileId
-                ? await generateWithProfile(context, profileId, quietPrompt, request.signal)
-                : await context.generateQuietPrompt({ quietPrompt, forceChId });
+            const buildMessages = getSettings().writerCustomPrompt
+                ? budget => customMessages(context, getSettings().writerInstruction?.trim() || defaultWriterInstruction,
+                    draft, forceChId, budget)
+                : null;
+            let result;
+            if (profileId) {
+                result = await generateWithProfile(context, profileId, quietPrompt, request.signal, buildMessages);
+            } else if (buildMessages) {
+                const completion = context.mainApi === 'openai' ? context.chatCompletionSettings : null;
+                const responseLength = Number(completion?.openai_max_tokens ?? document.querySelector('#amount_gen')?.value) || 512;
+                const messages = await buildMessages((Number(completion?.openai_max_context) || context.maxContext) - responseLength);
+                request.signal.throwIfAborted();
+                result = await context.generateRaw({ systemPrompt: messages.shift().content, prompt: messages, trimNames: false });
+            } else {
+                result = await context.generateQuietPrompt({ quietPrompt, forceChId });
+            }
             if (chatId !== getContext().getCurrentChatId()) return;
             if (!isEnabled() || profileId !== getProfileId() || requestRevision !== revision || input.value !== draft) {
                 status.textContent = '';
@@ -174,6 +245,7 @@ export function mountComposer(getContext, isEnabled, getProfileId) {
         } finally {
             request = undefined;
             write.disabled = false;
+            wandButton.disabled = false;
         }
     };
 

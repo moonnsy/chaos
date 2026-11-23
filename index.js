@@ -1,4 +1,4 @@
-import { mountComposer } from './composer.js';
+import { defaultWriterInstruction, mountComposer } from './composer.js';
 
 const key = 'plot_nudge';
 const ctx = () => SillyTavern.getContext();
@@ -24,6 +24,7 @@ const modes = {
 };
 let dialog;
 let composer;
+let writerEntry;
 let pending;
 let active = false;
 let appliedToReply;
@@ -36,6 +37,9 @@ let status = '';
 function settings() {
     const config = ctx().extensionSettings[key] ??= { enabled: true, auto: false, interval: 5, mode: 'random' };
     config.quickButtons ??= false;
+    config.writerInWand ??= false;
+    config.writerCustomPrompt ??= false;
+    config.writerInstruction ??= defaultWriterInstruction;
     return config;
 }
 
@@ -107,7 +111,11 @@ function update(message = status) {
     dialog.querySelector('fieldset').disabled = !config.enabled;
     field('enabled').checked = config.enabled;
     field('quickButtons').checked = config.quickButtons;
+    field('writerInWand').checked = config.writerInWand;
+    field('writerCustomPrompt').checked = config.writerCustomPrompt;
+    dialog.querySelector('[data-writer-instruction]').hidden = !config.writerCustomPrompt;
     if (composer) composer.hidden = !config.quickButtons;
+    writerEntry.hidden = !config.writerInWand || !composer;
     field('auto').checked = config.auto;
     field('interval').disabled = !config.auto;
     field('interval').value = config.interval;
@@ -181,16 +189,25 @@ function mount() {
     entry.className = 'extension_container';
     entry.innerHTML = '<div class="list-group-item flex-container flexGap5 interactable" role="button" tabindex="0"><i class="fa-solid fa-dice-d20 fa-fw" aria-hidden="true"></i><span>Сюжетный пинок</span></div>';
     menu.append(entry);
-    composer = mountComposer(ctx, () => settings().quickButtons, () => settings().writerProfile ?? '');
+    writerEntry = document.createElement('div');
+    writerEntry.id = 'plot-nudge-writer-entry';
+    writerEntry.className = 'extension_container';
+    writerEntry.innerHTML = '<button type="button" class="list-group-item flex-container flexGap5 interactable"><i class="fa-solid fa-feather-pointed fa-fw" aria-hidden="true"></i><span>Написать за меня</span></button>';
+    menu.append(writerEntry);
+    composer = mountComposer(ctx, settings, writerEntry.querySelector('button'));
+    writerEntry.hidden = !settings().writerInWand || !composer;
 
     dialog = document.createElement('dialog');
     dialog.id = 'plot-nudge';
     dialog.setAttribute('aria-labelledby', 'plot-nudge-title');
     dialog.innerHTML = `
         <header><h2 id="plot-nudge-title">Сюжетный пинок</h2><button data-close aria-label="Закрыть">×</button></header>
+        <nav class="pn-tabs" aria-label="Настройки расширения">
+            <button type="button" data-tab="nudge" aria-pressed="true">Пинки</button>
+            <button type="button" data-tab="writer" aria-pressed="false">Перо</button>
+        </nav>
+        <section data-panel="nudge" aria-label="Пинки">
         <label class="pn-toggle">Включить пинки <input type="checkbox" name="enabled" role="switch"></label>
-        <label class="pn-toggle">Быстрые кнопки над полем ввода <input type="checkbox" name="quickButtons" role="switch"></label>
-        <label class="pn-field pn-profile">Подключение для пера <select name="writerProfile"></select></label>
         <fieldset>
             <legend>Что произойдёт?</legend>
             <div class="pn-modes">${Object.entries(modes).map(([id, [, title, description]]) => `
@@ -205,7 +222,17 @@ function mount() {
             </div>
             <div class="pn-actions"><button data-next>На следующий ответ</button><button data-now>Пнуть сейчас</button></div>
         </fieldset>
-        <footer><span data-status role="status"></span><button data-cancel hidden>Отменить пинок</button></footer>`;
+        <footer><span data-status role="status"></span><button data-cancel hidden>Отменить пинок</button></footer>
+        </section>
+        <section data-panel="writer" aria-label="Перо" hidden>
+            <label class="pn-toggle">Быстрые кнопки над полем ввода <input type="checkbox" name="quickButtons" role="switch"></label>
+            <label class="pn-toggle">Перо в волшебной палочке <input type="checkbox" name="writerInWand" role="switch"></label>
+            <label class="pn-field pn-profile">Подключение для пера <select name="writerProfile"></select></label>
+            <label class="pn-toggle">Свой промпт вместо текста пресета <input type="checkbox" name="writerCustomPrompt" role="switch"></label>
+            <label class="pn-field" data-writer-instruction>Инструкция для пера
+                <textarea name="writerInstruction" rows="6"></textarea>
+            </label>
+        </section>`;
     document.body.append(dialog);
     const open = () => {
         if (dialog.open) return;
@@ -218,6 +245,7 @@ function mount() {
             select.add(new Option('Сохранённый профиль недоступен', selected));
         }
         select.value = selected;
+        field('writerInstruction').value = settings().writerInstruction;
         update();
         dialog.showModal();
     };
@@ -228,6 +256,16 @@ function mount() {
         open();
     });
     dialog.querySelector('[data-close]').onclick = () => dialog.close();
+    for (const button of dialog.querySelectorAll('[data-tab]')) {
+        button.onclick = () => {
+            for (const tab of dialog.querySelectorAll('[data-tab]')) {
+                tab.setAttribute('aria-pressed', String(tab === button));
+            }
+            for (const panel of dialog.querySelectorAll('[data-panel]')) {
+                panel.hidden = panel.dataset.panel !== button.dataset.tab;
+            }
+        };
+    }
     dialog.querySelector('[data-next]').onclick = () => apply(false);
     dialog.querySelector('[data-now]').onclick = () => apply(true);
     dialog.querySelector('[data-cancel]').onclick = () => {
